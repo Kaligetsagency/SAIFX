@@ -1,5 +1,5 @@
 let _supabase; 
-let marketData = {}; // Hapa ndipo app itahifadhi data za chati za Live kupiga hesabu
+let marketData = {}; 
 
 // ==========================================
 // 1. KUVUTA KEYS KUTOKA VERCEL (SERVER)
@@ -147,7 +147,6 @@ function connectDerivAPI() {
             
         } else if (data.msg_type === 'history') {
             let tfKey = Object.keys(timeframes).find(key => timeframes[key] === data.req_id);
-            // HIFADHI DATA ILI ENGINE IWEZE KUZISOMA WAKATI WA KUCHAMBUA
             marketData[tfKey] = data.candles; 
             renderChart(data.req_id, data.candles);
         }
@@ -156,8 +155,9 @@ function connectDerivAPI() {
 
 function initCharts() {
     const asset = document.getElementById('asset-select').value;
-    marketData = {}; // Safisha data za asset iliyopita
-    document.getElementById('analysis-results').innerHTML = ''; // Safisha majibu ya zamani
+    marketData = {}; 
+    document.getElementById('analysis-results').innerHTML = ''; 
+    document.getElementById('analysis-results').className = "results-box"; // Safisha onyo
     
     Object.keys(timeframes).forEach(tf => {
         ws.send(JSON.stringify({
@@ -194,64 +194,62 @@ function renderChart(granularity, candles) {
 }
 
 // ==========================================
-// 6. ENGINE HALISI YA UCHAMBUZI (LIVE DATA)
+// 6. ENGINE YA UCHAMBUZI (SUPER FAST & AUTO-WAIT 10 SECS)
 // ==========================================
 function runAnalysis() {
     const resultsBox = document.getElementById('analysis-results');
-    
-    // Hakikisha data zimeshuka zote kabla ya kupiga hesabu
-    if (!marketData['1d'] || !marketData['1hr'] || !marketData['4hr']) {
-        resultsBox.innerHTML = "🛑 Subiri kidogo, Data zinapakuliwa kutoka sokoni...";
-        resultsBox.className = "results-box system-alert";
-        return;
-    }
+    let timeWaited = 0; // Tutahesabu muda hapa
 
-    resultsBox.innerHTML = "Inachambua Soko kwa Live Data...";
-    resultsBox.className = "results-box"; 
-    
-    setTimeout(() => {
-        // 1. KUSOMA DATA HALISI KUTOKA KWENYE CHATI ZILIZOONEKANA
+    // Function ya kujikagua yenyewe badala ya kusimama
+    function attemptAnalysis() {
+        // 1. Kagua kama data muhimu zimeshuka
+        if (!marketData['1d'] || !marketData['1hr'] || !marketData['4hr']) {
+            resultsBox.innerHTML = "🛑 Subiri kidogo, Data zinapakuliwa kutoka sokoni...";
+            resultsBox.className = "results-box system-alert";
+            
+            timeWaited += 500; // Ongeza nusu sekunde (500ms)
+            
+            if (timeWaited <= 10000) { // Kama bado hatujafika sekunde 10
+                setTimeout(attemptAnalysis, 500); // Jaribu tena baada ya nusu sekunde
+            } else {
+                resultsBox.innerHTML = "🛑 Mtandao unasumbua. Imeshindwa kupata data ndani ya sekunde 10. Jaribu asset nyingine.";
+            }
+            return; // Zuia isipige hesabu kama data hakuna
+        }
+
+        // 2. KAMA DATA ZIPO, PIGA HESABU INSTANTLY (HAKUNA KUSUBIRI TENA)
         const dailyCandles = marketData['1d'];
-        const hourlyCandles = marketData['1hr'].slice(-24); // Angalia masaa 24 yaliyopita
+        const hourlyCandles = marketData['1hr'].slice(-24); 
         const h4Candles = marketData['4hr'].slice(-30);
 
-        // 2. KUTAFUTA MWELEKEO (Trend - Higher Highs/Lower Lows kwenye Daily)
         let lastDay = dailyCandles[dailyCandles.length - 1];
         let prevDay = dailyCandles[dailyCandles.length - 2];
         let trend = lastDay.close >= prevDay.close ? "UPTREND" : "DOWNTREND";
 
-        // 3. KUTAFUTA SUPPORT NA RESISTANCE KWA SIKU YA LEO (1 Hour)
         let support = Math.min(...hourlyCandles.map(c => c.low));
         let resistance = Math.max(...hourlyCandles.map(c => c.high));
         let range = resistance - support;
 
-        // 4. KUTAFUTA VIZUIZI VYA MBALI VYA TAKE PROFIT (4 Hour)
         let htfSupport = Math.min(...h4Candles.map(c => c.low));
         let htfResistance = Math.max(...h4Candles.map(c => c.high));
 
         let entry, sl, tp, orderType;
         let currentPrice = lastDay.close;
 
-        // Tunatambua kama ni Forex (0.0001) au Indices (mf. 400000) ili kuweka desimali sahihi
         let decimals = currentPrice > 1000 ? 2 : (currentPrice > 10 ? 3 : 5);
 
-        // 5. KUTOA MAAMUZI YA ODA (Top-Down Analysis Logic)
         if (trend === "UPTREND") {
             orderType = "Buy Stop";
-            entry = resistance + (range * 0.05); // Entry iwe pips kadhaa juu ya Resistance
-            sl = support; // SL chini ya Support
-            
-            // TP inalenga HTF Resistance. Lakini kama imekaribia sana, inatoa R:R mbaya kimakusudi ili ikuonye
+            entry = resistance + (range * 0.05); 
+            sl = support; 
             tp = htfResistance > entry + (range * 1.5) ? htfResistance : entry + (range * 0.8);
         } else {
             orderType = "Sell Stop";
-            entry = support - (range * 0.05); // Entry pips kadhaa chini ya Support
+            entry = support - (range * 0.05); 
             sl = resistance; 
-            
             tp = htfSupport < entry - (range * 1.5) ? htfSupport : entry - (range * 0.8);
         }
 
-        // 6. KUPIMA HATARI NA FAIDA (Risk:Reward)
         let risk = Math.abs(entry - sl);
         let reward = Math.abs(tp - entry);
         let ratio = (reward / risk).toFixed(1);
@@ -265,7 +263,6 @@ function runAnalysis() {
             <i>Risk:Reward Ratio = 1:${ratio}</i>
         `;
 
-        // ALERT LOGIC: Onyo Jekundu endapo Risk inazidi au sawa na Reward
         if (risk >= reward) {
             resultsBox.className = "results-box system-alert"; 
             htmlOutput += `
@@ -274,8 +271,13 @@ function runAnalysis() {
                 Hatari (SL) ni kubwa au sawa na Faida (TP).<br>
                 Soko lipo kila siku, usilazimishe.
             `;
+        } else {
+            resultsBox.className = "results-box"; // Rudisha kuwa kawaida kama trade ni nzuri
         }
 
         resultsBox.innerHTML = htmlOutput;
-    }, 1000); 
+    }
+
+    // Washa mfumo wa kupiga hesabu (auto-polling) mara moja
+    attemptAnalysis();
 }

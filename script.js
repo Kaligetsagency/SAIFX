@@ -1,10 +1,31 @@
-// WEKA KEYS ZAKO HAPA KUTOKA SUPABASE
-const SUPABASE_URL = 'WEKA_URL_YAKO_HAPA'; 
-const SUPABASE_ANON_KEY = 'WEKA_ANON_KEY_YAKO_HAPA';
+let _supabase; // Supabase itakaa hapa baada ya kuvutwa kutoka kwenye .env
 
-const _supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// ==========================================
+// 1. KUVUTA API KEYS KUTOKA KWENYE .ENV (SERVER)
+// ==========================================
+async function initSupabaseFromEnv() {
+    try {
+        const response = await fetch('/api/config');
+        const config = await response.json();
+        
+        if (config.url && config.anonKey) {
+            _supabase = window.supabase.createClient(config.url, config.anonKey);
+            console.log("Mfumo umeunganishwa na Database kikamilifu!");
+        } else {
+            throw new Error("Keys hazikupatikana kwenye .env");
+        }
+    } catch (error) {
+        document.getElementById('auth-error').innerText = "Imeshindwa kusoma keys kutoka kwenye server. Hakikisha umeweka Keys kwenye Vercel Environment Variables.";
+        document.getElementById('auth-error').style.color = "#ff4d4d";
+    }
+}
 
-// 1. Usalama wa PIN Algorithm
+// Washa function ya kuvuta keys ukurasa unapofunguka
+window.addEventListener('load', initSupabaseFromEnv);
+
+// ==========================================
+// 2. USALAMA NA USIMAMIZI WA PIN
+// ==========================================
 function isPinValid(pin) {
     if (pin.length !== 4) return false;
     const consecutive = ['1234', '2345', '3456', '4567', '5678', '6789', '4321', '5432', '6543', '7654', '8765', '9876'];
@@ -12,19 +33,26 @@ function isPinValid(pin) {
     return !consecutive.includes(pin) && !identical;
 }
 
-// 2. Logic Halisi ya Login, Kuzuia Namba Kujirudia, na Siku 14
+// ==========================================
+// 3. LOGIC YA LOGIN NA KUJISAJILI
+// ==========================================
 async function handleAuth() {
+    if (!_supabase) {
+        alert("Subiri kidogo, Mfumo bado unaunganishwa na Database...");
+        return;
+    }
+
     const phone = document.getElementById('phone').value;
     const pin = document.getElementById('pin').value;
     const errorMsg = document.getElementById('auth-error');
 
     if (!phone.match(/^0[0-9]{9}$/)) {
-        errorMsg.innerText = "Namba ianze na 0 na iwe na tarakimu 10.";
+        errorMsg.innerText = "Namba ianze na 0 na iwe na tarakimu 10 (Mfn: 0712345678).";
         errorMsg.style.color = "#ff4d4d";
         return;
     }
     if (!isPinValid(pin)) {
-        errorMsg.innerText = "PIN ni dhaifu. Weka namba 4 zisizofuatana.";
+        errorMsg.innerText = "PIN ni dhaifu. Weka namba 4 zisizofuatana wala kujirudia.";
         errorMsg.style.color = "#ff4d4d";
         return;
     }
@@ -33,14 +61,17 @@ async function handleAuth() {
     errorMsg.style.color = "yellow";
 
     try {
+        // Tumia maybeSingle() ili isilete error kama namba haipo
         const { data: user, error: fetchError } = await _supabase
             .from('app_users')
             .select('*')
             .eq('phone', phone)
-            .single();
+            .maybeSingle(); 
+
+        if (fetchError) throw fetchError;
 
         if (user) {
-            // Namba ishasajiliwa, fanya LOGIN
+            // MTUMIAJI YUPO (LOGIN)
             if (user.pin !== pin) {
                 errorMsg.innerText = "Hii namba tayari imesajiliwa. PIN uliyoweka sio sahihi.";
                 errorMsg.style.color = "#ff4d4d";
@@ -57,10 +88,10 @@ async function handleAuth() {
                 funguaApp();
             }
         } else {
-            // Namba mpya, fanya USAJILI
+            // MTUMIAJI HAYUPO (REGISTER)
             let now = new Date();
             let trialEnd = new Date();
-            trialEnd.setDate(now.getDate() + 14);
+            trialEnd.setDate(now.getDate() + 14); // Siku 14 za bure
 
             const { error: insertError } = await _supabase.from('app_users').insert([
                 { phone: phone, pin: pin, trial_start_date: now.toISOString(), subscription_end_date: trialEnd.toISOString() }
@@ -71,28 +102,35 @@ async function handleAuth() {
             funguaApp();
         }
     } catch (err) {
-        errorMsg.innerText = "Kuna tatizo la mtandao. Jaribu tena.";
+        errorMsg.innerText = "KOSA: " + (err.message || "Tatizo la kimtandao");
         errorMsg.style.color = "#ff4d4d";
-        console.log(err);
+        console.log("Supabase Error:", err);
     }
 }
 
-// 3. Kufungua App na Kuwasha Deriv WebSocket
+function initiatePayment(type, amount) {
+    alert(`Inatuma USSD Push kwenye simu yako kulipia Tsh ${amount}...`);
+    // Hapa ndipo API ya Snippe itakapounganishwa
+}
+
+// ==========================================
+// 4. KUFUNGUA APP NA KUWASHA DERIV API
+// ==========================================
 function funguaApp() {
     document.getElementById('auth-section').style.display = 'none';
     document.getElementById('app-section').style.display = 'block';
-    connectDerivAPI(); // Anza kuvuta data
+    connectDerivAPI(); 
 }
 
 let ws;
-const app_id = 1089;
+const app_id = 1089; // Public App ID ya Deriv
 const timeframes = { '1d': 86400, '4hr': 14400, '1hr': 3600, '30m': 1800, '15m': 900, '5m': 300, '1m': 60 };
 
 function connectDerivAPI() {
     ws = new WebSocket(`wss://ws.derivws.com/websockets/v3?app_id=${app_id}`);
     
     ws.onopen = () => {
-        // Vuta list ya Assets ZOTE pindi tu inapo-connect
+        // Vuta list ya Assets ZOTE za Deriv
         ws.send(JSON.stringify({ active_symbols: "brief", product_type: "basic" }));
     };
 
@@ -101,7 +139,7 @@ function connectDerivAPI() {
         
         if (data.msg_type === 'active_symbols') {
             const select = document.getElementById('asset-select');
-            select.innerHTML = ''; // Safisha zile tatu za mwanzo
+            select.innerHTML = ''; 
             
             data.active_symbols.forEach(sym => {
                 let option = document.createElement('option');
@@ -110,10 +148,7 @@ function connectDerivAPI() {
                 select.appendChild(option);
             });
             
-            // Baada ya kuweka assets zote, chora chati ya asset ya kwanza kabisa
             initCharts(); 
-
-            // Sikiliza endapo user atabadili asset kwenye dropdown
             select.addEventListener('change', initCharts);
             
         } else if (data.msg_type === 'history') {
@@ -124,12 +159,12 @@ function connectDerivAPI() {
 
 function initCharts() {
     const asset = document.getElementById('asset-select').value;
-    // Omba data kwa kila timeframe
+    
     Object.keys(timeframes).forEach(tf => {
         ws.send(JSON.stringify({
             ticks_history: asset,
             adjust_start_time: 1,
-            count: 100, // Tunavuta mishumaa 100 ili isilemeze simu
+            count: 100, // Tunavuta mishumaa 100 kuokoa RAM ya simu
             end: "latest",
             style: "candles",
             granularity: timeframes[tf],
@@ -138,35 +173,42 @@ function initCharts() {
     });
 }
 
-// 4. Kuchora Candlesticks kwenye HTML
+// ==========================================
+// 5. KUCHORA CANDLESTICKS (LIGHTWEIGHT CHARTS)
+// ==========================================
 function renderChart(granularity, candles) {
     let tfKey = Object.keys(timeframes).find(key => timeframes[key] === granularity);
     let container = document.getElementById(`chart-${tfKey}`);
-    container.innerHTML = ''; // Safisha chati ya zamani
+    
+    // Safisha chati iliyopo kabla ya kuchora mpya
+    if(container) {
+        container.innerHTML = ''; 
+        
+        const chart = LightweightCharts.createChart(container, {
+            layout: { background: { type: 'solid', color: '#1e1e1e' }, textColor: '#DDD' },
+            grid: { vertLines: { color: '#333' }, horzLines: { color: '#333' } },
+            timeScale: { timeVisible: true }
+        });
 
-    const chart = LightweightCharts.createChart(container, {
-        layout: { background: { type: 'solid', color: '#1e1e1e' }, textColor: '#DDD' },
-        grid: { vertLines: { color: '#333' }, horzLines: { color: '#333' } },
-        timeScale: { timeVisible: true }
-    });
-
-    const candleSeries = chart.addCandlestickSeries();
-    const formattedData = candles.map(c => ({
-        time: c.epoch, open: c.open, high: c.high, low: c.low, close: c.close
-    }));
-    candleSeries.setData(formattedData);
+        const candleSeries = chart.addCandlestickSeries();
+        const formattedData = candles.map(c => ({
+            time: c.epoch, open: c.open, high: c.high, low: c.low, close: c.close
+        }));
+        candleSeries.setData(formattedData);
+    }
 }
 
-// 5. ENGINE YA UCHAMBUZI (MTF Analysis & Alert)
+// ==========================================
+// 6. ENGINE YA UCHAMBUZI (MTF ANALYSIS & R:R ALERT)
+// ==========================================
 function runAnalysis() {
     const resultsBox = document.getElementById('analysis-results');
     resultsBox.innerHTML = "Inachambua Soko na Kupiga Hesabu... (Processing Data)";
     resultsBox.className = "results-box"; // Reset style
     
     setTimeout(() => {
-        // Mockup Algorithm: Hapa ndipo hesabu za kweli za chati zinakaa
+        // Hapa ndipo algorithm inasoma data za chati. (Mockup kwa sasa)
         let trend = "UPTREND"; 
-        let currentPrice = 1.0500;
         let support = 1.0450;
         let resistance = 1.0520;
 
@@ -188,7 +230,6 @@ function runAnalysis() {
         let reward = Math.abs(tp - entry);
         let ratio = (reward / risk).toFixed(1);
 
-        // Majibu Kamili ya Uchambuzi (Yataonekana Muda Wote)
         let htmlOutput = `
             ✅ <b>Uchambuzi Umekamilika</b><br><br>
             <b>Mwelekeo (HTF):</b> ${trend}<br>
@@ -198,9 +239,9 @@ function runAnalysis() {
             <i>Risk:Reward Ratio = 1:${ratio}</i>
         `;
 
-        // Ogeza Alert chini kama Risk ni kubwa kuliko Reward
+        // ALERT LOGIC: Kama Risk ni sawa au kubwa kuliko Reward
         if (risk >= reward) {
-            resultsBox.className = "results-box system-alert"; // Hii inabadili rangi ya box kuwa nyekundu
+            resultsBox.className = "results-box system-alert"; 
             htmlOutput += `
                 <hr style="border-color:#ff4d4d; margin: 10px 0;">
                 🛑 <b>SYSTEM ALERT: Acha hiyo trade!</b><br><br>
@@ -211,4 +252,4 @@ function runAnalysis() {
 
         resultsBox.innerHTML = htmlOutput;
     }, 1500); 
-        }
+}

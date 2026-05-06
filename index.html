@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="sw">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart FX Analyzer</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+</head>
+<body>
+    <div id="auth-section" class="container">
+        <h2>Ingia / Jisajili</h2>
+        <input type="number" id="phone" placeholder="Namba ya Simu (Mfn: 0712345678)" maxlength="10">
+        <input type="password" id="pin" placeholder="PIN Namba 4 (Siri)" maxlength="4">
+        <p id="auth-error" class="error"></p>
+        <button onclick="handleAuth()">Ingia kwenye Mfumo</button>
+    </div>
+
+    <div id="payment-section" class="container" style="display: none;">
+        <h2>Muda Wako Umeisha</h2>
+        <p>Lipia ili kuendelea kutumia Engine.</p>
+        <button onclick="initiatePayment('day', 3500)">Siku 1 (Tsh 3,500)</button>
+        <button onclick="initiatePayment('week', 18000)">Wiki 1 (Tsh 18,000)</button>
+        <button onclick="initiatePayment('month', 35000)">Mwezi 1 (Tsh 35,000)</button>
+    </div>
+
+    <div id="app-section" style="display: none;">
+        <div class="header">
+            <select id="asset-select">
+                <option value="R_75">Volatility 75 Index</option>
+                <option value="frxEURUSD">EUR/USD</option>
+                <option value="frxGBPUSD">GBP/USD</option>
+            </select>
+            <button id="analyze-btn" onclick="runAnalysis()">Chambua Soko (Analyze)</button>
+        </div>
+
+        <div id="analysis-results" class="results-box">
+            </div>
+
+        <div class="charts-wrapper">
+            <div class="charts-grid">
+                <div class="chart-box"><h3>1 Day</h3><div id="chart-1d"></div></div>
+                <div class="chart-box"><h3>4 Hours</h3><div id="chart-4hr"></div></div>
+                <div class="chart-box"><h3>1 Hour</h3><div id="chart-1hr"></div></div>
+                <div class="chart-box"><h3>30 Min</h3><div id="chart-30m"></div></div>
+                <div class="chart-box"><h3>15 Min</h3><div id="chart-15m"></div></div>
+                <div class="chart-box"><h3>5 Min</h3><div id="chart-5m"></div></div>
+                <div class="chart-box"><h3>1 Min</h3><div id="chart-1m"></div></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

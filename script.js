@@ -1,30 +1,29 @@
-let _supabase; // Supabase itakaa hapa baada ya kuvutwa kutoka kwenye .env
+let _supabase; 
 
 // ==========================================
-// 1. KUVUTA API KEYS KUTOKA KWENYE .ENV (SERVER)
+// 1. KUVUTA KEYS KUTOKA VERCEL (SERVER)
 // ==========================================
 async function initSupabaseFromEnv() {
     try {
         const response = await fetch('/api/config');
         const config = await response.json();
         
-        if (config.url && config.anonKey) {
-            _supabase = window.supabase.createClient(config.url, config.anonKey);
-            console.log("Mfumo umeunganishwa na Database kikamilifu!");
+        if (config.url && config.apiKey) {
+            _supabase = window.supabase.createClient(config.url, config.apiKey);
+            console.log("Database imeunganishwa kikamilifu!");
         } else {
-            throw new Error("Keys hazikupatikana kwenye .env");
+            throw new Error("Keys hazikupatikana");
         }
     } catch (error) {
-        document.getElementById('auth-error').innerText = "Imeshindwa kusoma keys kutoka kwenye server. Hakikisha umeweka Keys kwenye Vercel Environment Variables.";
+        document.getElementById('auth-error').innerText = "Kosa: Hakikisha Keys zipo Vercel Environment Variables.";
         document.getElementById('auth-error').style.color = "#ff4d4d";
     }
 }
 
-// Washa function ya kuvuta keys ukurasa unapofunguka
 window.addEventListener('load', initSupabaseFromEnv);
 
 // ==========================================
-// 2. USALAMA NA USIMAMIZI WA PIN
+// 2. USALAMA WA PIN
 // ==========================================
 function isPinValid(pin) {
     if (pin.length !== 4) return false;
@@ -38,7 +37,7 @@ function isPinValid(pin) {
 // ==========================================
 async function handleAuth() {
     if (!_supabase) {
-        alert("Subiri kidogo, Mfumo bado unaunganishwa na Database...");
+        alert("Subiri kidogo, Mfumo bado unaunganishwa...");
         return;
     }
 
@@ -47,12 +46,12 @@ async function handleAuth() {
     const errorMsg = document.getElementById('auth-error');
 
     if (!phone.match(/^0[0-9]{9}$/)) {
-        errorMsg.innerText = "Namba ianze na 0 na iwe na tarakimu 10 (Mfn: 0712345678).";
+        errorMsg.innerText = "Namba ianze na 0 na iwe na tarakimu 10.";
         errorMsg.style.color = "#ff4d4d";
         return;
     }
     if (!isPinValid(pin)) {
-        errorMsg.innerText = "PIN ni dhaifu. Weka namba 4 zisizofuatana wala kujirudia.";
+        errorMsg.innerText = "PIN ni dhaifu. Weka namba 4 zisizofuatana.";
         errorMsg.style.color = "#ff4d4d";
         return;
     }
@@ -61,7 +60,6 @@ async function handleAuth() {
     errorMsg.style.color = "yellow";
 
     try {
-        // Tumia maybeSingle() ili isilete error kama namba haipo
         const { data: user, error: fetchError } = await _supabase
             .from('app_users')
             .select('*')
@@ -71,9 +69,9 @@ async function handleAuth() {
         if (fetchError) throw fetchError;
 
         if (user) {
-            // MTUMIAJI YUPO (LOGIN)
+            // LOGIN
             if (user.pin !== pin) {
-                errorMsg.innerText = "Hii namba tayari imesajiliwa. PIN uliyoweka sio sahihi.";
+                errorMsg.innerText = "Namba ishasajiliwa. PIN sio sahihi.";
                 errorMsg.style.color = "#ff4d4d";
                 return;
             }
@@ -88,33 +86,31 @@ async function handleAuth() {
                 funguaApp();
             }
         } else {
-            // MTUMIAJI HAYUPO (REGISTER)
+            // REGISTER
             let now = new Date();
             let trialEnd = new Date();
-            trialEnd.setDate(now.getDate() + 14); // Siku 14 za bure
+            trialEnd.setDate(now.getDate() + 14); 
 
             const { error: insertError } = await _supabase.from('app_users').insert([
                 { phone: phone, pin: pin, trial_start_date: now.toISOString(), subscription_end_date: trialEnd.toISOString() }
             ]);
 
             if (insertError) throw insertError;
-            alert("Akaunti imetengenezwa kikamilifu! Umepata siku 14 za bure.");
+            alert("Akaunti imetengenezwa! Umepata siku 14 za bure.");
             funguaApp();
         }
     } catch (err) {
-        errorMsg.innerText = "KOSA: " + (err.message || "Tatizo la kimtandao");
+        errorMsg.innerText = "KOSA: " + (err.message || "Tatizo la mtandao");
         errorMsg.style.color = "#ff4d4d";
-        console.log("Supabase Error:", err);
     }
 }
 
 function initiatePayment(type, amount) {
     alert(`Inatuma USSD Push kwenye simu yako kulipia Tsh ${amount}...`);
-    // Hapa ndipo API ya Snippe itakapounganishwa
 }
 
 // ==========================================
-// 4. KUFUNGUA APP NA KUWASHA DERIV API
+// 4. KUFUNGUA APP NA DERIV API
 // ==========================================
 function funguaApp() {
     document.getElementById('auth-section').style.display = 'none';
@@ -123,14 +119,13 @@ function funguaApp() {
 }
 
 let ws;
-const app_id = 1089; // Public App ID ya Deriv
+const app_id = 1089; 
 const timeframes = { '1d': 86400, '4hr': 14400, '1hr': 3600, '30m': 1800, '15m': 900, '5m': 300, '1m': 60 };
 
 function connectDerivAPI() {
     ws = new WebSocket(`wss://ws.derivws.com/websockets/v3?app_id=${app_id}`);
     
     ws.onopen = () => {
-        // Vuta list ya Assets ZOTE za Deriv
         ws.send(JSON.stringify({ active_symbols: "brief", product_type: "basic" }));
     };
 
@@ -164,7 +159,7 @@ function initCharts() {
         ws.send(JSON.stringify({
             ticks_history: asset,
             adjust_start_time: 1,
-            count: 100, // Tunavuta mishumaa 100 kuokoa RAM ya simu
+            count: 100, 
             end: "latest",
             style: "candles",
             granularity: timeframes[tf],
@@ -174,13 +169,12 @@ function initCharts() {
 }
 
 // ==========================================
-// 5. KUCHORA CANDLESTICKS (LIGHTWEIGHT CHARTS)
+// 5. KUCHORA CANDLESTICKS 
 // ==========================================
 function renderChart(granularity, candles) {
     let tfKey = Object.keys(timeframes).find(key => timeframes[key] === granularity);
     let container = document.getElementById(`chart-${tfKey}`);
     
-    // Safisha chati iliyopo kabla ya kuchora mpya
     if(container) {
         container.innerHTML = ''; 
         
@@ -199,15 +193,14 @@ function renderChart(granularity, candles) {
 }
 
 // ==========================================
-// 6. ENGINE YA UCHAMBUZI (MTF ANALYSIS & R:R ALERT)
+// 6. ENGINE YA UCHAMBUZI (MTF ANALYSIS & ALERT)
 // ==========================================
 function runAnalysis() {
     const resultsBox = document.getElementById('analysis-results');
-    resultsBox.innerHTML = "Inachambua Soko na Kupiga Hesabu... (Processing Data)";
-    resultsBox.className = "results-box"; // Reset style
+    resultsBox.innerHTML = "Inachambua Soko na Kupiga Hesabu...";
+    resultsBox.className = "results-box"; 
     
     setTimeout(() => {
-        // Hapa ndipo algorithm inasoma data za chati. (Mockup kwa sasa)
         let trend = "UPTREND"; 
         let support = 1.0450;
         let resistance = 1.0520;
@@ -239,7 +232,6 @@ function runAnalysis() {
             <i>Risk:Reward Ratio = 1:${ratio}</i>
         `;
 
-        // ALERT LOGIC: Kama Risk ni sawa au kubwa kuliko Reward
         if (risk >= reward) {
             resultsBox.className = "results-box system-alert"; 
             htmlOutput += `

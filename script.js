@@ -1,4 +1,5 @@
 let _supabase; 
+let marketData = {}; // Hapa ndipo app itahifadhi data za chati za Live kupiga hesabu
 
 // ==========================================
 // 1. KUVUTA KEYS KUTOKA VERCEL (SERVER)
@@ -69,7 +70,6 @@ async function handleAuth() {
         if (fetchError) throw fetchError;
 
         if (user) {
-            // LOGIN
             if (user.pin !== pin) {
                 errorMsg.innerText = "Namba ishasajiliwa. PIN sio sahihi.";
                 errorMsg.style.color = "#ff4d4d";
@@ -86,7 +86,6 @@ async function handleAuth() {
                 funguaApp();
             }
         } else {
-            // REGISTER
             let now = new Date();
             let trialEnd = new Date();
             trialEnd.setDate(now.getDate() + 14); 
@@ -147,6 +146,9 @@ function connectDerivAPI() {
             select.addEventListener('change', initCharts);
             
         } else if (data.msg_type === 'history') {
+            let tfKey = Object.keys(timeframes).find(key => timeframes[key] === data.req_id);
+            // HIFADHI DATA ILI ENGINE IWEZE KUZISOMA WAKATI WA KUCHAMBUA
+            marketData[tfKey] = data.candles; 
             renderChart(data.req_id, data.candles);
         }
     };
@@ -154,6 +156,8 @@ function connectDerivAPI() {
 
 function initCharts() {
     const asset = document.getElementById('asset-select').value;
+    marketData = {}; // Safisha data za asset iliyopita
+    document.getElementById('analysis-results').innerHTML = ''; // Safisha majibu ya zamani
     
     Object.keys(timeframes).forEach(tf => {
         ws.send(JSON.stringify({
@@ -168,9 +172,6 @@ function initCharts() {
     });
 }
 
-// ==========================================
-// 5. KUCHORA CANDLESTICKS 
-// ==========================================
 function renderChart(granularity, candles) {
     let tfKey = Object.keys(timeframes).find(key => timeframes[key] === granularity);
     let container = document.getElementById(`chart-${tfKey}`);
@@ -193,45 +194,78 @@ function renderChart(granularity, candles) {
 }
 
 // ==========================================
-// 6. ENGINE YA UCHAMBUZI (MTF ANALYSIS & ALERT)
+// 6. ENGINE HALISI YA UCHAMBUZI (LIVE DATA)
 // ==========================================
 function runAnalysis() {
     const resultsBox = document.getElementById('analysis-results');
-    resultsBox.innerHTML = "Inachambua Soko na Kupiga Hesabu...";
+    
+    // Hakikisha data zimeshuka zote kabla ya kupiga hesabu
+    if (!marketData['1d'] || !marketData['1hr'] || !marketData['4hr']) {
+        resultsBox.innerHTML = "🛑 Subiri kidogo, Data zinapakuliwa kutoka sokoni...";
+        resultsBox.className = "results-box system-alert";
+        return;
+    }
+
+    resultsBox.innerHTML = "Inachambua Soko kwa Live Data...";
     resultsBox.className = "results-box"; 
     
     setTimeout(() => {
-        let trend = "UPTREND"; 
-        let support = 1.0450;
-        let resistance = 1.0520;
+        // 1. KUSOMA DATA HALISI KUTOKA KWENYE CHATI ZILIZOONEKANA
+        const dailyCandles = marketData['1d'];
+        const hourlyCandles = marketData['1hr'].slice(-24); // Angalia masaa 24 yaliyopita
+        const h4Candles = marketData['4hr'].slice(-30);
+
+        // 2. KUTAFUTA MWELEKEO (Trend - Higher Highs/Lower Lows kwenye Daily)
+        let lastDay = dailyCandles[dailyCandles.length - 1];
+        let prevDay = dailyCandles[dailyCandles.length - 2];
+        let trend = lastDay.close >= prevDay.close ? "UPTREND" : "DOWNTREND";
+
+        // 3. KUTAFUTA SUPPORT NA RESISTANCE KWA SIKU YA LEO (1 Hour)
+        let support = Math.min(...hourlyCandles.map(c => c.low));
+        let resistance = Math.max(...hourlyCandles.map(c => c.high));
+        let range = resistance - support;
+
+        // 4. KUTAFUTA VIZUIZI VYA MBALI VYA TAKE PROFIT (4 Hour)
+        let htfSupport = Math.min(...h4Candles.map(c => c.low));
+        let htfResistance = Math.max(...h4Candles.map(c => c.high));
 
         let entry, sl, tp, orderType;
+        let currentPrice = lastDay.close;
 
+        // Tunatambua kama ni Forex (0.0001) au Indices (mf. 400000) ili kuweka desimali sahihi
+        let decimals = currentPrice > 1000 ? 2 : (currentPrice > 10 ? 3 : 5);
+
+        // 5. KUTOA MAAMUZI YA ODA (Top-Down Analysis Logic)
         if (trend === "UPTREND") {
             orderType = "Buy Stop";
-            entry = resistance + 0.0005; 
-            sl = support - 0.0010; 
-            tp = entry + 0.0030; 
+            entry = resistance + (range * 0.05); // Entry iwe pips kadhaa juu ya Resistance
+            sl = support; // SL chini ya Support
+            
+            // TP inalenga HTF Resistance. Lakini kama imekaribia sana, inatoa R:R mbaya kimakusudi ili ikuonye
+            tp = htfResistance > entry + (range * 1.5) ? htfResistance : entry + (range * 0.8);
         } else {
             orderType = "Sell Stop";
-            entry = support - 0.0005;
-            sl = resistance + 0.0010;
-            tp = entry - 0.0030;
+            entry = support - (range * 0.05); // Entry pips kadhaa chini ya Support
+            sl = resistance; 
+            
+            tp = htfSupport < entry - (range * 1.5) ? htfSupport : entry - (range * 0.8);
         }
 
+        // 6. KUPIMA HATARI NA FAIDA (Risk:Reward)
         let risk = Math.abs(entry - sl);
         let reward = Math.abs(tp - entry);
         let ratio = (reward / risk).toFixed(1);
 
         let htmlOutput = `
-            ✅ <b>Uchambuzi Umekamilika</b><br><br>
+            ✅ <b>Uchambuzi Umekamilika (Live Market Data)</b><br><br>
             <b>Mwelekeo (HTF):</b> ${trend}<br>
-            <b>Order:</b> ${orderType} @ ${entry.toFixed(4)}<br>
-            <b>Stop Loss:</b> ${sl.toFixed(4)}<br>
-            <b>Take Profit:</b> ${tp.toFixed(4)}<br>
+            <b>Order:</b> ${orderType} @ ${entry.toFixed(decimals)}<br>
+            <b>Stop Loss:</b> ${sl.toFixed(decimals)}<br>
+            <b>Take Profit:</b> ${tp.toFixed(decimals)}<br>
             <i>Risk:Reward Ratio = 1:${ratio}</i>
         `;
 
+        // ALERT LOGIC: Onyo Jekundu endapo Risk inazidi au sawa na Reward
         if (risk >= reward) {
             resultsBox.className = "results-box system-alert"; 
             htmlOutput += `
@@ -243,5 +277,5 @@ function runAnalysis() {
         }
 
         resultsBox.innerHTML = htmlOutput;
-    }, 1500); 
+    }, 1000); 
 }

@@ -104,10 +104,6 @@ async function handleAuth() {
     }
 }
 
-function initiatePayment(type, amount) {
-    alert(`Inatuma USSD Push kwenye simu yako kulipia Tsh ${amount}...`);
-}
-
 // ==========================================
 // 4. KUFUNGUA APP NA DERIV API
 // ==========================================
@@ -131,6 +127,18 @@ function connectDerivAPI() {
     ws.onmessage = (msg) => {
         const data = JSON.parse(msg.data);
         
+        // Mfumo wa kudaka Makosa kutoka Deriv API
+        if (data.error) {
+            console.error("Deriv Error:", data.error.message);
+            const resultsBox = document.getElementById('analysis-results');
+            if (data.error.code === "RateLimit") {
+                resultsBox.innerHTML = "🛑 Mfumo umezidiwa spidi, unajaribu tena... Subiri.";
+            } else {
+                resultsBox.innerHTML = `🛑 API Inakataa: ${data.error.message}`;
+            }
+            return;
+        }
+        
         if (data.msg_type === 'active_symbols') {
             const select = document.getElementById('asset-select');
             select.innerHTML = ''; 
@@ -146,33 +154,44 @@ function connectDerivAPI() {
             select.addEventListener('change', initCharts);
             
         } else if (data.msg_type === 'history') {
-            let tfKey = Object.keys(timeframes).find(key => timeframes[key] === data.req_id);
-            marketData[tfKey] = data.candles; // Hifadhi haraka haraka
+            let reqId = parseInt(data.req_id);
+            let tfKey = Object.keys(timeframes).find(key => timeframes[key] === reqId);
             
-            // Tunasukuma zoezi la kuchora chati mbele kidogo (Asynchronous) ili simu isistack
-            setTimeout(() => {
-                renderChart(data.req_id, data.candles);
-            }, 50);
+            if (tfKey && data.candles) {
+                marketData[tfKey] = data.candles; 
+                setTimeout(() => {
+                    renderChart(reqId, data.candles);
+                }, 10); // Chorwa haraka bila kustack
+            }
         }
     };
 }
 
+// 5. MFUMO MPYA WA FOLENI (KUZUIA RATE LIMIT)
 function initCharts() {
     const asset = document.getElementById('asset-select').value;
     marketData = {}; 
-    document.getElementById('analysis-results').innerHTML = ''; 
+    document.getElementById('analysis-results').innerHTML = 'Inapakua chati mpya...'; 
     document.getElementById('analysis-results').className = "results-box"; 
     
+    let delay = 0; // Tunaanza bila kuchelewa kwa ombi la kwanza
+    
     Object.keys(timeframes).forEach(tf => {
-        ws.send(JSON.stringify({
-            ticks_history: asset,
-            adjust_start_time: 1,
-            count: 40, // <---- MZIGO UMEPUNGUZWA KUTOKA 100 MPAKA 40 (Spidi kubwa)
-            end: "latest",
-            style: "candles",
-            granularity: timeframes[tf],
-            req_id: timeframes[tf] 
-        }));
+        setTimeout(() => {
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    ticks_history: asset,
+                    adjust_start_time: 1,
+                    count: 40, 
+                    end: "latest",
+                    style: "candles",
+                    granularity: timeframes[tf],
+                    req_id: timeframes[tf] 
+                }));
+            }
+        }, delay);
+        
+        delay += 300; // Ombi linalofuata litasubiri sekunde 0.3 kuepuka Spam
     });
 }
 
@@ -198,31 +217,32 @@ function renderChart(granularity, candles) {
 }
 
 // ==========================================
-// 6. ENGINE YA UCHAMBUZI (SUPER FAST)
+// 6. ENGINE YA UCHAMBUZI
 // ==========================================
 function runAnalysis() {
     const resultsBox = document.getElementById('analysis-results');
     let timeWaited = 0; 
 
     function attemptAnalysis() {
-        if (!marketData['1d'] || !marketData['1hr'] || !marketData['4hr']) {
-            resultsBox.innerHTML = "🛑 Subiri kidogo, Data zinapakuliwa kutoka sokoni...";
+        // Tunahakikisha data muhimu zimeshuka
+        if (!marketData['1d'] || !marketData['1hr'] || !marketData['4hr'] || !marketData['15m']) {
+            resultsBox.innerHTML = "🛑 Subiri kidogo, Data za uchambuzi zinashuka... " + (timeWaited/1000).toFixed(1) + "s";
             resultsBox.className = "results-box system-alert";
             
-            timeWaited += 200; // Inakagua kila baada ya millisecond 200 (Haraka zaidi)
+            timeWaited += 500; 
             
-            if (timeWaited <= 10000) { 
-                setTimeout(attemptAnalysis, 200); 
+            if (timeWaited <= 15000) { // Uvumilivu mpaka sekunde 15 (Kwa sababu ya foleni)
+                setTimeout(attemptAnalysis, 500); 
             } else {
-                resultsBox.innerHTML = "🛑 Mtandao unasumbua. Imeshindwa kupata data ndani ya sekunde 10. Jaribu asset nyingine.";
+                resultsBox.innerHTML = "🛑 Mtandao unasumbua sana au Soko halina data hizi. Chagua Asset nyingine.";
             }
             return; 
         }
 
-        // DATA ZIPO, PIGA HESABU INSTANTLY 
+        // KAMA DATA ZIPO, PIGA HESABU INSTANTLY 
         const dailyCandles = marketData['1d'];
-        const hourlyCandles = marketData['1hr'].slice(-24); // Tunahitaji masaa 24 tu
-        const h4Candles = marketData['4hr'].slice(-30);     // Tunahitaji mishumaa 30 tu
+        const hourlyCandles = marketData['1hr'].slice(-24); 
+        const h4Candles = marketData['4hr'].slice(-30);
 
         let lastDay = dailyCandles[dailyCandles.length - 1];
         let prevDay = dailyCandles[dailyCandles.length - 2];
@@ -254,7 +274,7 @@ function runAnalysis() {
 
         let risk = Math.abs(entry - sl);
         let reward = Math.abs(tp - entry);
-        let ratio = (reward / risk).toFixed(1);
+        let ratio = risk > 0 ? (reward / risk).toFixed(1) : "0";
 
         let htmlOutput = `
             ✅ <b>Uchambuzi Umekamilika (Live Market Data)</b><br><br>

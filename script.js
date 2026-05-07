@@ -147,8 +147,12 @@ function connectDerivAPI() {
             
         } else if (data.msg_type === 'history') {
             let tfKey = Object.keys(timeframes).find(key => timeframes[key] === data.req_id);
-            marketData[tfKey] = data.candles; 
-            renderChart(data.req_id, data.candles);
+            marketData[tfKey] = data.candles; // Hifadhi haraka haraka
+            
+            // Tunasukuma zoezi la kuchora chati mbele kidogo (Asynchronous) ili simu isistack
+            setTimeout(() => {
+                renderChart(data.req_id, data.candles);
+            }, 50);
         }
     };
 }
@@ -157,13 +161,13 @@ function initCharts() {
     const asset = document.getElementById('asset-select').value;
     marketData = {}; 
     document.getElementById('analysis-results').innerHTML = ''; 
-    document.getElementById('analysis-results').className = "results-box"; // Safisha onyo
+    document.getElementById('analysis-results').className = "results-box"; 
     
     Object.keys(timeframes).forEach(tf => {
         ws.send(JSON.stringify({
             ticks_history: asset,
             adjust_start_time: 1,
-            count: 100, 
+            count: 40, // <---- MZIGO UMEPUNGUZWA KUTOKA 100 MPAKA 40 (Spidi kubwa)
             end: "latest",
             style: "candles",
             granularity: timeframes[tf],
@@ -194,33 +198,31 @@ function renderChart(granularity, candles) {
 }
 
 // ==========================================
-// 6. ENGINE YA UCHAMBUZI (SUPER FAST & AUTO-WAIT 10 SECS)
+// 6. ENGINE YA UCHAMBUZI (SUPER FAST)
 // ==========================================
 function runAnalysis() {
     const resultsBox = document.getElementById('analysis-results');
-    let timeWaited = 0; // Tutahesabu muda hapa
+    let timeWaited = 0; 
 
-    // Function ya kujikagua yenyewe badala ya kusimama
     function attemptAnalysis() {
-        // 1. Kagua kama data muhimu zimeshuka
         if (!marketData['1d'] || !marketData['1hr'] || !marketData['4hr']) {
             resultsBox.innerHTML = "🛑 Subiri kidogo, Data zinapakuliwa kutoka sokoni...";
             resultsBox.className = "results-box system-alert";
             
-            timeWaited += 500; // Ongeza nusu sekunde (500ms)
+            timeWaited += 200; // Inakagua kila baada ya millisecond 200 (Haraka zaidi)
             
-            if (timeWaited <= 10000) { // Kama bado hatujafika sekunde 10
-                setTimeout(attemptAnalysis, 500); // Jaribu tena baada ya nusu sekunde
+            if (timeWaited <= 10000) { 
+                setTimeout(attemptAnalysis, 200); 
             } else {
                 resultsBox.innerHTML = "🛑 Mtandao unasumbua. Imeshindwa kupata data ndani ya sekunde 10. Jaribu asset nyingine.";
             }
-            return; // Zuia isipige hesabu kama data hakuna
+            return; 
         }
 
-        // 2. KAMA DATA ZIPO, PIGA HESABU INSTANTLY (HAKUNA KUSUBIRI TENA)
+        // DATA ZIPO, PIGA HESABU INSTANTLY 
         const dailyCandles = marketData['1d'];
-        const hourlyCandles = marketData['1hr'].slice(-24); 
-        const h4Candles = marketData['4hr'].slice(-30);
+        const hourlyCandles = marketData['1hr'].slice(-24); // Tunahitaji masaa 24 tu
+        const h4Candles = marketData['4hr'].slice(-30);     // Tunahitaji mishumaa 30 tu
 
         let lastDay = dailyCandles[dailyCandles.length - 1];
         let prevDay = dailyCandles[dailyCandles.length - 2];
@@ -272,12 +274,11 @@ function runAnalysis() {
                 Soko lipo kila siku, usilazimishe.
             `;
         } else {
-            resultsBox.className = "results-box"; // Rudisha kuwa kawaida kama trade ni nzuri
+            resultsBox.className = "results-box"; 
         }
 
         resultsBox.innerHTML = htmlOutput;
     }
 
-    // Washa mfumo wa kupiga hesabu (auto-polling) mara moja
     attemptAnalysis();
 }

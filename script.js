@@ -1,11 +1,13 @@
 let _supabase; 
-let tickDataArray = []; // Hifadhi ya Ticks zote
+let tickDataArray = []; 
 let currentLivePrice = 0; 
-let oldestTickEpoch = null; // Kwa ajili ya kupakua data za nyuma
+let oldestTickEpoch = null; 
 let tickChart;
 let tickSeries;
 
+// ==========================================
 // 1. KUVUTA KEYS KUTOKA VERCEL
+// ==========================================
 async function initSupabaseFromEnv() {
     try {
         const response = await fetch('/api/config');
@@ -26,7 +28,9 @@ function isPinValid(pin) {
     return !consecutive.includes(pin) && !identical;
 }
 
+// ==========================================
 // 2. LOGIN LOGIC
+// ==========================================
 async function handleAuth() {
     if (!_supabase) { alert("Mfumo unaunganishwa..."); return; }
     const phone = document.getElementById('phone').value;
@@ -57,11 +61,13 @@ async function handleAuth() {
 
 function initiatePayment(type, amount) { alert(`Malipo Tsh ${amount}...`); }
 
+// ==========================================
 // 3. KUFUNGUA APP NA DERIV API
+// ==========================================
 function funguaApp() {
     document.getElementById('auth-section').style.display = 'none';
     document.getElementById('app-section').style.display = 'block';
-    setupChart(); // Tengeneza Uwanja wa Chati mapema
+    setupChart(); 
     connectDerivAPI(); 
 }
 
@@ -71,23 +77,38 @@ const app_id = 1089;
 function connectDerivAPI() {
     ws = new WebSocket(`wss://ws.derivws.com/websockets/v3?app_id=${app_id}`);
     
-    ws.onopen = () => { ws.send(JSON.stringify({ active_symbols: "brief", product_type: "basic" })); };
+    ws.onopen = () => { 
+        ws.send(JSON.stringify({ active_symbols: "brief", product_type: "basic" })); 
+    };
 
     ws.onmessage = (msg) => {
         const data = JSON.parse(msg.data);
         
         if (data.error) { console.error("Deriv Error:", data.error.message); return; }
         
+        // ==========================================
+        // SULUHISHO LA SPIDI YA MASOKO (DOM OPTIMIZATION)
+        // ==========================================
         if (data.msg_type === 'active_symbols') {
             const select = document.getElementById('asset-select');
-            select.innerHTML = ''; 
+            let optionsHTML = ''; // Tunatumia Text badala ya kutengeneza element moja moja (Haraka sana)
+            
             data.active_symbols.forEach(sym => {
-                let option = document.createElement('option'); option.value = sym.symbol; option.text = sym.display_name; select.appendChild(option);
+                // Tunachukua Masoko yaliyo WAZI pekee (Inapunguza mzigo sana)
+                if (sym.exchange_is_open) {
+                    optionsHTML += `<option value="${sym.symbol}">${sym.display_name}</option>`;
+                }
             });
-            initTickStream(); 
+            
+            select.innerHTML = optionsHTML; // Tunayamimina yote kwa mpigo
+            
+            // Tunazuia Dropdown isitengeneze listner mara mbili
+            select.removeEventListener('change', initTickStream);
             select.addEventListener('change', initTickStream);
             
-        // KUPOKEA TICKS ZA HISTORIA (5000 Ticks)
+            initTickStream(); // Anza kupakua Ticks za soko la kwanza
+            
+        // KUPOKEA TICKS ZA HISTORIA
         } else if (data.msg_type === 'history') {
             const prices = data.history.prices;
             const times = data.history.times;
@@ -97,14 +118,11 @@ function connectDerivAPI() {
                 newTicks.push({ time: times[i], value: prices[i] });
             }
 
-            // Hifadhi epoch ya zamani zaidi ili tuweze kupakua za nyuma zaidi baadaye
             if (times.length > 0) { oldestTickEpoch = times[0]; }
 
-            // Kama ni data mpya kabisa (asset imebadilishwa)
             if (tickDataArray.length === 0) {
                 tickDataArray = newTicks;
             } else {
-                // Kama tumepakua za nyuma, kuziunganisha mwanzo wa Array
                 tickDataArray = [...newTicks, ...tickDataArray];
             }
             
@@ -112,12 +130,12 @@ function connectDerivAPI() {
             document.getElementById('analysis-results').innerHTML = `✅ Ticks ${tickDataArray.length} zimepakuliwa.`;
             document.getElementById('analysis-results').className = "results-box";
 
-        // KUPOKEA LIVE TICKS MOJA MOJA KILA SEKUNDE
+        // KUPOKEA LIVE TICKS 
         } else if (data.msg_type === 'tick') {
             let newTick = { time: data.tick.epoch, value: data.tick.quote };
             
             tickDataArray.push(newTick);
-            tickSeries.update(newTick); // Chora kwenye chati papo hapo
+            tickSeries.update(newTick); 
             
             let priceBox = document.getElementById('live-price');
             if (newTick.value > currentLivePrice) { priceBox.style.color = '#00ff00'; } 
@@ -129,15 +147,16 @@ function connectDerivAPI() {
     };
 }
 
+// ==========================================
 // 4. KUTENGENEZA CHATI
+// ==========================================
 function setupChart() {
     const container = document.getElementById('tick-chart-container');
     tickChart = LightweightCharts.createChart(container, {
         layout: { background: { type: 'solid', color: '#1e1e1e' }, textColor: '#DDD' },
         grid: { vertLines: { visible: false }, horzLines: { color: '#333' } },
-        timeScale: { timeVisible: true, secondsVisible: true } // Ticks zinahitaji sekunde
+        timeScale: { timeVisible: true, secondsVisible: true } 
     });
-    // AreaSeries inaleta muonekano mzuri sana wa kimlima kwenye Ticks
     tickSeries = tickChart.addAreaSeries({
         lineColor: '#2962FF', topColor: 'rgba(41, 98, 255, 0.4)', bottomColor: 'rgba(41, 98, 255, 0)'
     });
@@ -155,13 +174,12 @@ function initTickStream() {
         ws.send(JSON.stringify({ forget_all: "ticks" }));
         ws.send(JSON.stringify({ ticks: asset, subscribe: 1 }));
         
-        // Pakua historia ya Ticks 5000 za kwanza
         ws.send(JSON.stringify({
             ticks_history: asset,
             adjust_start_time: 1,
             count: 5000, 
             end: "latest",
-            style: "ticks" // Tunahitaji Ticks, Sio Candles
+            style: "ticks" 
         }));
     }
 }
@@ -177,13 +195,15 @@ function loadOlderTicks() {
             ticks_history: asset,
             adjust_start_time: 1,
             count: 5000, 
-            end: oldestTickEpoch, // Pakua zinazoishia kwenye tick ya zamani zaidi
+            end: oldestTickEpoch, 
             style: "ticks"
         }));
     }
 }
 
+// ==========================================
 // 5. ENGINE YA PURE PRICE ACTION UCHAMBUZI
+// ==========================================
 function runAnalysis() {
     const resultsBox = document.getElementById('analysis-results');
 
@@ -196,19 +216,15 @@ function runAnalysis() {
     resultsBox.innerHTML = "Inachambua Price Action kwenye Ticks...";
     
     setTimeout(() => {
-        // Tunatumia Ticks kutafuta Support na Resistance
         const allPrices = tickDataArray.map(t => t.value);
         
-        // Tunapima Trend kwa kuangalia Ticks 2000 zilizopita
         const trendPrices = allPrices.slice(-2000);
-        // Tunapima S/R ya karibu sana (Micro-Levels) kwa kuangalia Ticks 300 zilizopita
         const recentPrices = allPrices.slice(-300);
 
         let currentPrice = allPrices[allPrices.length - 1];
         let oldPrice = trendPrices[0];
         let trend = currentPrice >= oldPrice ? "UPTREND" : "DOWNTREND";
 
-        // Pure Price Action: Local Highs and Lows
         let support = Math.min(...recentPrices);
         let resistance = Math.max(...recentPrices);
         let range = resistance - support;
@@ -216,12 +232,11 @@ function runAnalysis() {
         let entry, sl, tp, orderType;
         let decimals = currentPrice > 1000 ? 2 : (currentPrice > 10 ? 3 : 5);
 
-        // Scalping Logic (Breakout ya Micro-Range)
         if (trend === "UPTREND") {
             orderType = "Buy Stop";
-            entry = resistance + (range * 0.1); // Breakout juu ya Local Resistance
-            sl = support; // SL chini ya Local Support
-            tp = entry + (range * 1.5); // Reward inalenga 1.5x ya Range
+            entry = resistance + (range * 0.1); 
+            sl = support; 
+            tp = entry + (range * 1.5); 
         } else {
             orderType = "Sell Stop";
             entry = support - (range * 0.1); 
@@ -242,7 +257,6 @@ function runAnalysis() {
             <i>Risk:Reward Ratio = 1:${ratio}</i>
         `;
 
-        // Kwenye scalping, kama Range ni ndogo sana au Risk ni kubwa, onya!
         if (risk >= reward || range === 0) {
             resultsBox.className = "results-box system-alert"; 
             htmlOutput += `

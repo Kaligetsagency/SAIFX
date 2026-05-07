@@ -1,55 +1,20 @@
-* {
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
-    font-family: Arial, sans-serif;
-}
+* { box-sizing: border-box; margin: 0; padding: 0; font-family: Arial, sans-serif; }
 body { background-color: #121212; color: #ffffff; }
-.container {
-    max-width: 400px; margin: 50px auto; padding: 20px;
-    background: #1e1e1e; border-radius: 8px; text-align: center;
-}
-input, select, button {
-    width: 100%; padding: 12px; margin: 10px 0;
-    border-radius: 5px; border: none;
-}
+.container { max-width: 400px; margin: 50px auto; padding: 20px; background: #1e1e1e; border-radius: 8px; text-align: center; }
+input, select, button { width: 100%; padding: 12px; margin: 10px 0; border-radius: 5px; border: none; }
 input, select { background: #333; color: white; }
 button { background: #007bff; color: white; font-weight: bold; cursor: pointer; }
 button:hover { background: #0056b3; }
 .error { color: #ff4d4d; font-size: 14px; }
 
-.header { padding: 15px; display: flex; gap: 10px; flex-direction: column; }
+.header { padding: 15px; display: flex; flex-direction: column; gap: 10px; }
+#live-price-container { background: #1e1e1e; margin: 0 15px 15px 15px; padding: 15px; text-align: center; border-radius: 5px; font-size: 18px; border: 1px solid #333; }
+#live-price { font-size: 24px; font-weight: bold; transition: color 0.3s ease; }
 
-/* MTINDO MPYA WA LIVE PRICE */
-#live-price-container {
-    background: #1e1e1e;
-    margin: 0 15px 15px 15px;
-    padding: 15px;
-    text-align: center;
-    border-radius: 5px;
-    font-size: 18px;
-    border: 1px solid #333;
-}
-#live-price {
-    font-size: 24px;
-    font-weight: bold;
-    transition: color 0.3s ease; /* Inafanya rangi ibadilike smooth */
-}
-
-.results-box {
-    margin: 15px; padding: 15px; background: #2a2a2a;
-    border-left: 5px solid #00ff00; border-radius: 5px;
-}
-.charts-wrapper {
-    overflow-x: auto; padding: 10px; white-space: nowrap;
-}
-.charts-grid {
-    display: inline-flex; gap: 15px;
-}
-.chart-box {
-    width: 300px; height: 250px; background: #1e1e1e;
-    border-radius: 8px; overflow: hidden; display: inline-block;
-}
-.chart-box h3 { text-align: center; font-size: 14px; padding: 5px; background: #333; }
-.chart-container { height: 100%; width: 100%; }
+.results-box { margin: 15px; padding: 15px; background: #2a2a2a; border-left: 5px solid #00ff00; border-radius: 5px; }
 .system-alert { border-left-color: #ff4d4d; color: #ff4d4d; }
+
+.chart-wrapper { padding: 15px; }
+#tick-chart-container { width: 100%; height: 350px; background: #1e1e1e; border-radius: 8px; margin-top: 10px; }
+#load-more-btn { background: #333; border: 1px solid #555; color: #ccc; }
+#load-more-btn:hover { background: #444; }

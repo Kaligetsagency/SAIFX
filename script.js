@@ -104,6 +104,10 @@ async function handleAuth() {
     }
 }
 
+function initiatePayment(type, amount) {
+    alert(`Inatuma USSD Push kwenye simu yako kulipia Tsh ${amount}...`);
+}
+
 // ==========================================
 // 4. KUFUNGUA APP NA DERIV API
 // ==========================================
@@ -127,7 +131,6 @@ function connectDerivAPI() {
     ws.onmessage = (msg) => {
         const data = JSON.parse(msg.data);
         
-        // Mfumo wa kudaka Makosa kutoka Deriv API
         if (data.error) {
             console.error("Deriv Error:", data.error.message);
             const resultsBox = document.getElementById('analysis-results');
@@ -153,15 +156,16 @@ function connectDerivAPI() {
             initCharts(); 
             select.addEventListener('change', initCharts);
             
-        } else if (data.msg_type === 'history') {
+        // HAPA NDIPO TATIZO LILIPOKUWA (TUMEREKEBISHA KUSOMA 'candles' BADALA YA 'history')
+        } else if (data.msg_type === 'candles' || data.msg_type === 'history') {
             let reqId = parseInt(data.req_id);
             let tfKey = Object.keys(timeframes).find(key => timeframes[key] === reqId);
             
             if (tfKey && data.candles) {
-                marketData[tfKey] = data.candles; 
+                marketData[tfKey] = data.candles; // Hifadhi haraka haraka kwenye database ya App
                 setTimeout(() => {
-                    renderChart(reqId, data.candles);
-                }, 10); // Chorwa haraka bila kustack
+                    renderChart(reqId, data.candles); // Chora chati taratibu
+                }, 10); 
             }
         }
     };
@@ -171,10 +175,10 @@ function connectDerivAPI() {
 function initCharts() {
     const asset = document.getElementById('asset-select').value;
     marketData = {}; 
-    document.getElementById('analysis-results').innerHTML = 'Inapakua chati mpya...'; 
+    document.getElementById('analysis-results').innerHTML = 'Inapakua chati na data...'; 
     document.getElementById('analysis-results').className = "results-box"; 
     
-    let delay = 0; // Tunaanza bila kuchelewa kwa ombi la kwanza
+    let delay = 0; 
     
     Object.keys(timeframes).forEach(tf => {
         setTimeout(() => {
@@ -191,7 +195,7 @@ function initCharts() {
             }
         }, delay);
         
-        delay += 300; // Ombi linalofuata litasubiri sekunde 0.3 kuepuka Spam
+        delay += 300; 
     });
 }
 
@@ -217,21 +221,20 @@ function renderChart(granularity, candles) {
 }
 
 // ==========================================
-// 6. ENGINE YA UCHAMBUZI
+// 6. ENGINE YA UCHAMBUZI (SAHIHI NA YA HARAKA)
 // ==========================================
 function runAnalysis() {
     const resultsBox = document.getElementById('analysis-results');
     let timeWaited = 0; 
 
     function attemptAnalysis() {
-        // Tunahakikisha data muhimu zimeshuka
-        if (!marketData['1d'] || !marketData['1hr'] || !marketData['4hr'] || !marketData['15m']) {
-            resultsBox.innerHTML = "🛑 Subiri kidogo, Data za uchambuzi zinashuka... " + (timeWaited/1000).toFixed(1) + "s";
+        if (!marketData['1d'] || !marketData['1hr'] || !marketData['4hr']) {
+            resultsBox.innerHTML = "🛑 Subiri kidogo, Data zinapakuliwa kutoka sokoni... " + (timeWaited/1000).toFixed(1) + "s";
             resultsBox.className = "results-box system-alert";
             
             timeWaited += 500; 
             
-            if (timeWaited <= 15000) { // Uvumilivu mpaka sekunde 15 (Kwa sababu ya foleni)
+            if (timeWaited <= 15000) { 
                 setTimeout(attemptAnalysis, 500); 
             } else {
                 resultsBox.innerHTML = "🛑 Mtandao unasumbua sana au Soko halina data hizi. Chagua Asset nyingine.";
@@ -239,10 +242,16 @@ function runAnalysis() {
             return; 
         }
 
-        // KAMA DATA ZIPO, PIGA HESABU INSTANTLY 
         const dailyCandles = marketData['1d'];
         const hourlyCandles = marketData['1hr'].slice(-24); 
         const h4Candles = marketData['4hr'].slice(-30);
+
+        // Kuzuia error kama soko halina mishumaa ya kutosha (K.m. Masoko mapya)
+        if (dailyCandles.length < 2 || hourlyCandles.length === 0 || h4Candles.length === 0) {
+            resultsBox.innerHTML = "🛑 Soko hili bado ni jipya au limefungwa, halina data za kutosha kufanya uchambuzi.";
+            resultsBox.className = "results-box system-alert";
+            return;
+        }
 
         let lastDay = dailyCandles[dailyCandles.length - 1];
         let prevDay = dailyCandles[dailyCandles.length - 2];

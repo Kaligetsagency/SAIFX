@@ -1,8 +1,9 @@
 let _supabase; 
 let marketData = {}; 
+let currentLivePrice = 0; // Kuhifadhi bei inayoendelea kwa ajili ya kupima rangi
 
 // ==========================================
-// 1. KUVUTA KEYS KUTOKA VERCEL (SERVER)
+// 1. KUVUTA KEYS KUTOKA VERCEL
 // ==========================================
 async function initSupabaseFromEnv() {
     try {
@@ -23,9 +24,6 @@ async function initSupabaseFromEnv() {
 
 window.addEventListener('load', initSupabaseFromEnv);
 
-// ==========================================
-// 2. USALAMA WA PIN
-// ==========================================
 function isPinValid(pin) {
     if (pin.length !== 4) return false;
     const consecutive = ['1234', '2345', '3456', '4567', '5678', '6789', '4321', '5432', '6543', '7654', '8765', '9876'];
@@ -34,7 +32,7 @@ function isPinValid(pin) {
 }
 
 // ==========================================
-// 3. LOGIC YA LOGIN NA KUJISAJILI
+// 2. LOGIC YA LOGIN NA KUJISAJILI
 // ==========================================
 async function handleAuth() {
     if (!_supabase) {
@@ -109,7 +107,7 @@ function initiatePayment(type, amount) {
 }
 
 // ==========================================
-// 4. KUFUNGUA APP NA DERIV API
+// 3. KUFUNGUA APP NA DERIV API
 // ==========================================
 function funguaApp() {
     document.getElementById('auth-section').style.display = 'none';
@@ -133,15 +131,10 @@ function connectDerivAPI() {
         
         if (data.error) {
             console.error("Deriv Error:", data.error.message);
-            const resultsBox = document.getElementById('analysis-results');
-            if (data.error.code === "RateLimit") {
-                resultsBox.innerHTML = "🛑 Mfumo umezidiwa spidi, unajaribu tena... Subiri.";
-            } else {
-                resultsBox.innerHTML = `🛑 API Inakataa: ${data.error.message}`;
-            }
             return;
         }
         
+        // 1. Orodha ya Masoko
         if (data.msg_type === 'active_symbols') {
             const select = document.getElementById('asset-select');
             select.innerHTML = ''; 
@@ -156,30 +149,54 @@ function connectDerivAPI() {
             initCharts(); 
             select.addEventListener('change', initCharts);
             
-        // HAPA NDIPO TATIZO LILIPOKUWA (TUMEREKEBISHA KUSOMA 'candles' BADALA YA 'history')
+        // 2. Chati zikishuka
         } else if (data.msg_type === 'candles' || data.msg_type === 'history') {
             let reqId = parseInt(data.req_id);
             let tfKey = Object.keys(timeframes).find(key => timeframes[key] === reqId);
             
             if (tfKey && data.candles) {
-                marketData[tfKey] = data.candles; // Hifadhi haraka haraka kwenye database ya App
+                marketData[tfKey] = data.candles; 
                 setTimeout(() => {
-                    renderChart(reqId, data.candles); // Chora chati taratibu
+                    renderChart(reqId, data.candles); 
                 }, 10); 
             }
+            
+        // 3. LIVE PRICE INAYOCHEZA (Tick Stream)
+        } else if (data.msg_type === 'tick') {
+            let newPrice = data.tick.quote;
+            let priceBox = document.getElementById('live-price');
+            
+            // Pima kama imepanda (Kijani) au Imeshuka (Nyekundu)
+            if (newPrice > currentLivePrice) {
+                priceBox.style.color = '#00ff00'; 
+            } else if (newPrice < currentLivePrice) {
+                priceBox.style.color = '#ff4d4d'; 
+            }
+            
+            priceBox.innerText = newPrice;
+            currentLivePrice = newPrice; // Update the memory
         }
     };
 }
 
-// 5. MFUMO MPYA WA FOLENI (KUZUIA RATE LIMIT)
+// ==========================================
+// 4. KUVUTA CHATI NA LIVE PRICE STREAM
+// ==========================================
 function initCharts() {
     const asset = document.getElementById('asset-select').value;
     marketData = {}; 
     document.getElementById('analysis-results').innerHTML = 'Inapakua chati na data...'; 
     document.getElementById('analysis-results').className = "results-box"; 
+    document.getElementById('live-price').innerText = 'Inapakua...';
+    document.getElementById('live-price').style.color = '#ffffff';
+
+    if (ws.readyState === WebSocket.OPEN) {
+        // Zima tick stream ya zamani, Washa mpya kwa asset iliyochaguliwa
+        ws.send(JSON.stringify({ forget_all: "ticks" }));
+        ws.send(JSON.stringify({ ticks: asset, subscribe: 1 }));
+    }
     
     let delay = 0; 
-    
     Object.keys(timeframes).forEach(tf => {
         setTimeout(() => {
             if (ws.readyState === WebSocket.OPEN) {
@@ -194,7 +211,6 @@ function initCharts() {
                 }));
             }
         }, delay);
-        
         delay += 300; 
     });
 }
@@ -221,7 +237,7 @@ function renderChart(granularity, candles) {
 }
 
 // ==========================================
-// 6. ENGINE YA UCHAMBUZI (SAHIHI NA YA HARAKA)
+// 5. ENGINE YA UCHAMBUZI
 // ==========================================
 function runAnalysis() {
     const resultsBox = document.getElementById('analysis-results');
@@ -246,9 +262,8 @@ function runAnalysis() {
         const hourlyCandles = marketData['1hr'].slice(-24); 
         const h4Candles = marketData['4hr'].slice(-30);
 
-        // Kuzuia error kama soko halina mishumaa ya kutosha (K.m. Masoko mapya)
         if (dailyCandles.length < 2 || hourlyCandles.length === 0 || h4Candles.length === 0) {
-            resultsBox.innerHTML = "🛑 Soko hili bado ni jipya au limefungwa, halina data za kutosha kufanya uchambuzi.";
+            resultsBox.innerHTML = "🛑 Soko hili bado ni jipya au limefungwa, halina data za kutosha.";
             resultsBox.className = "results-box system-alert";
             return;
         }
